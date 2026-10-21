@@ -52,7 +52,7 @@ DEFAULT_CFG: dict[str, Any] = {
     # Rate limiting. Free plan bucket = 5 weight. We refill slowly to stay far from bans.
     "rate_capacity": 5.0,
     "rate_refill_per_s": 1.0,          # raise to ~4 on the Plus plan
-    "weights": {"trending": 3, "kline": 2},
+    "weights": {"trending": 3, "kline": 2, "other": 2},
 
     # Screen ("yesterday's runners" + "same-day wave 2"): age 1h-2d, mcap >= 100k
     "screen_every_s": 60,
@@ -71,6 +71,8 @@ DEFAULT_CFG: dict[str, Any] = {
     "watch_max_age_h": 96,             # meme life cycle is 3-4 days
     "watch_drop_below_mcap": 40_000,   # dead
     "max_losses_per_coin": 2,          # "if a coin hasn't worked once or twice, stay away"
+    "min_dev_score": 0.15,             # Token Screen's dev reputation cut-off (serial ruggers, reskins)
+    "escape_top10_jump": 0.15,         # escape if top-10 holders rise 15 points after entry
 
     # Wave-2 detector (5m candles)
     "min_candles": 24,                 # 2h of history
@@ -202,6 +204,34 @@ class RateLimited(Exception):
     def __init__(self, until: float):
         super().__init__(f"rate limited until {until}")
         self.until = until
+
+
+def call_weight(args: list[str], cfg: dict) -> float:
+    """Rate-limit weight for a gmgn-cli call (published: trending 3, kline 2; others assumed 2)."""
+    head = [a for a in args if not a.startswith("-")][:2]
+    if head == ["market", "trending"]:
+        return cfg["weights"]["trending"]
+    if head == ["market", "kline"]:
+        return cfg["weights"]["kline"]
+    return cfg["weights"].get("other", 2)
+
+
+def gate(args: list[str]):
+    """Called by app.py before every gmgn-cli call so Token Screen and Wave-2 share one budget."""
+    try:
+        ENGINE.limiter.acquire(call_weight(args, ENGINE.cfg))
+    except RateLimited as e:
+        raise RuntimeError("GMGN rate limit: paused until "
+                           + time.strftime("%H:%M:%S", time.localtime(e.until))) from None
+
+
+def note_result(text: str):
+    """Called by app.py with gmgn-cli stderr; a 429 pauses every caller until the ban ends."""
+    if text and "429" in text:
+        m = re.search(r"~(\d+)s remaining", text)
+        wait = (int(m.group(1)) if m else 60) + 5
+        ENGINE.limiter.pause(wait)
+        log_event("rate_limited", wait_s=wait, where="token_screen", msg=text[:300])
 
 
 # ──────────────────────────────────────────────────────────────────────────
@@ -498,7 +528,9 @@ def detect_wave2(candles: list[dict], cfg: dict) -> dict:
     prev_above = math.log(closes[L - 1]) - line(L - 1)
     m["vs_line"] = math.exp(above) - 1
     if above < margin:
-        res.update(stage="below_line", detail=f"{-m['vs_line']:.0%} below the downtrend line")
+        res.update(stage="below_line",
+                   detail=(f"{-m['vs_line']:.0%} below the downtrend line" if m["vs_line"] < -0.005
+                           else "touching the downtrend line, needs a clean close above it"))
         return res
     if prev_above >= margin and math.log(closes[L - 2]) - line(L - 2) >= margin:
         res.update(stage="already_broke", detail="broke out earlier, missed the entry")
@@ -617,6 +649,18 @@ def process_candle(tr: dict, c: dict, cfg: dict):
         trail = cfg["moonbag_trail_pct"] if only_moon else cfg["trail_pct"]
         tr["stop"] = max(tr["stop"], tr["peak"] * (1 - trail))
     tr["last_price"] = c["c"]
+
+
+def escape_reason(snap: dict, row: dict, cfg: dict) -> str | None:
+    """Rug signs on a coin we hold (same checks as Token Screen's escape monitor)."""
+    if _b(row.get("is_honeypot")):
+        return "honeypot detected"
+    if row.get("renounced_mint") is not None and not _b(row.get("renounced_mint")) and snap.get("renounced_mint", True):
+        return "mint authority no longer renounced"
+    t10 = _f(row.get("top_10_holder_rate"), None)
+    if t10 is not None and snap.get("top10") is not None and t10 - snap["top10"] >= cfg["escape_top10_jump"]:
+        return f"top-10 holders jumped {snap['top10']:.0%} → {t10:.0%}"
+    return None
 
 
 def to_5m(c1: list[dict]) -> list[dict]:
@@ -740,6 +784,8 @@ class Engine:
         self.next_screen = 0.0
         self.next_sol_price = 0.0
         self._thread: threading.Thread | None = None
+        # set by app.py: addr -> (score 0..1 | None, note). Reuses Token Screen's dev reputation code.
+        self.dev_checker = None
 
     # persistence
     def _load(self) -> dict:
@@ -767,18 +813,31 @@ class Engine:
     def screen(self, now: float):
         rows = self.source.trending()
         with self.lock:
-            self._apply_screen(rows, now)
+            self._apply_screen(rows, now, origin="scan")
 
-    def _apply_screen(self, rows: list[dict], now: float):
+    def feed(self, rows: list[dict], extra: dict | None = None):
+        """Token Screen hands over the coins that passed its own safety gates (no extra API calls).
+        `extra` maps address -> {dev_eval, dev_note} when Token Screen already checked the developer."""
+        if not rows:
+            return
+        with self.lock:
+            self._apply_screen(rows, time.time(), origin="token_screen", extra=extra or {})
+
+    def _apply_screen(self, rows: list[dict], now: float, origin: str = "scan", extra: dict | None = None):
         passed, rejects = 0, {}
+        extra = extra or {}
+        by_addr = {}
         for r in rows:
+            addr = r.get("address")
+            if not addr:
+                continue
+            by_addr[addr] = r
             ok, why = screen_row(r, self.cfg)
             key = why.split(" ")[0] if not ok else "ok"
             if not ok:
                 rejects[key] = rejects.get(key, 0) + 1
                 continue
             passed += 1
-            addr = r["address"]
             if self.state["coin_losses"].get(addr, 0) >= self.cfg["max_losses_per_coin"]:
                 continue
             price, mcap = _f(r.get("price")), _f(r.get("market_cap"))
@@ -787,13 +846,23 @@ class Engine:
                         mcap=mcap, ath_mcap=_f(r.get("history_highest_market_cap")),
                         fees_sol=_f(r.get("gas_fee")), bundler=_f(r.get("bundler_rate")),
                         top10=_f(r.get("top_10_holder_rate")), volume_1h=_f(r.get("volume")),
-                        created=_f(r.get("creation_timestamp")), seen=now)
+                        created=_f(r.get("creation_timestamp")), seen=now,
+                        smart=int(_f(r.get("smart_degen_count"))), kol=int(_f(r.get("renowned_count"))),
+                        renounced_mint=_b(r.get("renounced_mint")) if r.get("renounced_mint") is not None else True,
+                        honeypot=_b(r.get("is_honeypot")), rug=_f(r.get("rug_ratio")))
+            if addr in extra:
+                info.update(dev_eval=extra[addr].get("dev_eval"), dev_note=extra[addr].get("dev_note"),
+                            dev_checked=now)
             if w:
                 w.update(info)
+                if origin == "token_screen":
+                    w["from_token_screen"] = True
             else:
-                info.update(added=now, last_eval=0, stage="new", detail="waiting for first chart read")
+                info.update(added=now, last_eval=0, stage="new", detail="waiting for first chart read",
+                            from_token_screen=(origin == "token_screen"))
                 self.state["watch"][addr] = info
-        # cap the watchlist: keep the highest-volume coins, never drop one with an open trade
+        self._escape_check(by_addr, now)
+        # prune and cap the watchlist: keep the highest-volume coins, never drop one with an open trade
         open_addrs = {t["address"] for t in self.state["trades"] if t["status"] == "open"}
         watch = self.state["watch"]
         for addr in list(watch):
@@ -802,14 +871,30 @@ class Engine:
             if addr in open_addrs:
                 continue
             if age_h > self.cfg["watch_max_age_h"] or w["mcap"] < self.cfg["watch_drop_below_mcap"] \
-                    or w.get("stage") == "dead" or now - w["seen"] > 12 * 3600:
+                    or w.get("stage") in ("dead", "dev_reject") or now - w["seen"] > 12 * 3600:
                 del watch[addr]
         if len(watch) > self.cfg["watch_max"]:
             ranked = sorted(watch.values(), key=lambda w: (w["address"] in open_addrs, w["volume_1h"]), reverse=True)
             for w in ranked[self.cfg["watch_max"]:]:
                 del watch[w["address"]]
-        self.status["screen"] = dict(rows=len(rows), passed=passed, rejects=rejects)
-        self.status["last_screen"] = now
+        if origin == "scan":
+            self.status["screen"] = dict(rows=len(rows), passed=passed, rejects=rejects)
+            self.status["last_screen"] = now
+        else:
+            self.status["last_feed"] = now
+            self.status["feed_passed"] = passed
+
+    def _escape_check(self, rows_by_addr: dict, now: float):
+        """Escape monitor for paper trades: exit on the rug signs Token Screen watches for."""
+        for tr in self.state["trades"]:
+            if tr["status"] != "open" or tr["address"] not in rows_by_addr:
+                continue
+            reason = escape_reason(tr.get("entry_snap") or {}, rows_by_addr[tr["address"]], self.cfg)
+            if reason:
+                price = _f(rows_by_addr[tr["address"]].get("price")) or tr["last_price"]
+                tr["last_price"] = price
+                _sell(tr, tr["remaining"], price * (1 - self.cfg["stop_slippage"]), now, "escape: " + reason, self.cfg)
+                self._after_close(tr)
 
     def evaluate(self, addr: str, now: float):
         with self.lock:
@@ -820,10 +905,34 @@ class Engine:
         t_from = int(max(created, now - 48 * 3600))
         candles = self.source.kline(addr, "5m", t_from, int(now))
         with self.lock:
-            if addr in self.state["watch"]:
-                self._apply_eval(self.state["watch"][addr], candles, now)
+            w = self.state["watch"].get(addr)
+            det = self._apply_eval(w, candles, now) if w else None
+            need_dev = bool(det) and self.dev_checker is not None and \
+                (w.get("dev_eval") is None or now - w.get("dev_checked", 0) > 3600)
+        if not det:
+            return
+        if need_dev:                                   # creator history, only when a signal fires
+            try:
+                score, note = self.dev_checker(addr)
+            except Exception as e:
+                score, note = None, f"dev check failed: {str(e)[:80]}"
+            with self.lock:
+                if addr in self.state["watch"]:
+                    w = self.state["watch"][addr]
+                    w.update(dev_eval=score, dev_note=note, dev_checked=time.time())
+        with self.lock:
+            w = self.state["watch"].get(addr)
+            if not w:
+                return
+            score = w.get("dev_eval")
+            if score is not None and score < self.cfg["min_dev_score"]:
+                w["stage"], w["detail"] = "dev_reject", f"setup found, but creator looks bad: {w.get('dev_note') or 'low dev score'}"
+                log_event("signal_dev_reject", symbol=w["symbol"], dev_eval=score, note=w.get("dev_note"))
+                return
+            self._open_from_signal(w, det, candles, now)
 
-    def _apply_eval(self, w: dict, candles: list[dict], now: float):
+    def _apply_eval(self, w: dict, candles: list[dict], now: float) -> dict | None:
+        """Update the coin's stage; return the detection if it is a tradable signal."""
         closed = [c for c in candles if c["t"] + 300 <= now]
         det = detect_wave2(closed, self.cfg)
         w["last_eval"] = now
@@ -831,20 +940,27 @@ class Engine:
         if closed:
             w["mcap"] = closed[-1]["c"] * w["supply"]
         if not det["signal"]:
-            return
+            return None
         if any(t["address"] == w["address"] and t["status"] == "open" for t in self.state["trades"]):
-            return
+            return None
         if sum(1 for t in self.state["trades"] if t["status"] == "open") >= self.cfg["max_open_trades"]:
             log_event("signal_skipped_max_open", symbol=w["symbol"])
-            return
+            return None
+        det["last_candle_t"] = closed[-1]["t"]
+        return det
+
+    def _open_from_signal(self, w: dict, det: dict, candles: list[dict], now: float):
         tr = open_trade(w, det, self.cfg, now)
-        tr["last_check"] = closed[-1]["t"] + 300
+        tr["last_check"] = det["last_candle_t"] + 300
+        tr["entry_snap"] = dict(top10=w.get("top10", 0.0), renounced_mint=w.get("renounced_mint", True))
         self.state["trades"].append(tr)
         alert = dict(id=tr["id"], ts=now, symbol=w["symbol"], address=w["address"], seen=False,
                      detail=det["detail"], entry_price=tr["entry_ref"], entry_mcap=tr["entry_mcap"],
                      stop_mcap=tr["stop"] * w["supply"], stop_pct=1 - tr["stop"] / tr["entry_fill"],
                      targets=[dict(label=t["label"], mcap=t["price"] * w["supply"], frac=t["frac"]) for t in tr["targets"]],
-                     stake_sol=tr["stake_sol"])
+                     stake_sol=tr["stake_sol"], smart=w.get("smart", 0), kol=w.get("kol", 0),
+                     dev_eval=w.get("dev_eval"), dev_note=w.get("dev_note"),
+                     from_token_screen=w.get("from_token_screen", False))
         self.state["alerts"].insert(0, alert)
         self.state["alerts"] = self.state["alerts"][:100]
         log_event("signal", **{k: alert[k] for k in ("symbol", "address", "entry_mcap", "stop_mcap", "detail")})
@@ -863,10 +979,13 @@ class Engine:
         before = tr["status"]
         update_trade(tr, candles, now, self.cfg)
         if before == "open" and tr["status"] == "closed":
-            pnl = trade_view(tr, self.cfg)["pnl_sol"]
-            if pnl <= 0:
-                self.state["coin_losses"][tr["address"]] = self.state["coin_losses"].get(tr["address"], 0) + 1
-            log_event("closed", symbol=tr["symbol"], reason=tr["exit_reason"], pnl_sol=pnl)
+            self._after_close(tr)
+
+    def _after_close(self, tr: dict):
+        pnl = trade_view(tr, self.cfg)["pnl_sol"]
+        if pnl <= 0:
+            self.state["coin_losses"][tr["address"]] = self.state["coin_losses"].get(tr["address"], 0) + 1
+        log_event("closed", symbol=tr["symbol"], reason=tr["exit_reason"], pnl_sol=pnl)
 
     def refresh_sol_price(self, now: float):
         try:

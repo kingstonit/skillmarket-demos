@@ -34,6 +34,8 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
+import sajad   # memetrader: Wave-2 engine; also owns the one GMGN rate limiter both tabs share
+
 random.seed(7)
 HERE = pathlib.Path(__file__).resolve().parent
 STATIC_DIR = HERE / "static"
@@ -246,8 +248,10 @@ class LiveGMGN(GMGNAdapter):
 
     def _cli(self, *args) -> dict:
         cmd = ["gmgn-cli", *args, "--chain", self.chain, "--raw"]
+        sajad.gate(list(args))                 # shared GMGN budget with the Wave-2 engine
         out = subprocess.run(cmd, capture_output=True, text=True,
                              timeout=25, env=self.env)
+        sajad.note_result(out.stderr if out.returncode != 0 else "")
         if out.returncode != 0:
             raise RuntimeError(f"gmgn-cli error: {out.stderr.strip()}")
         return self._check_code(json.loads(out.stdout))
@@ -259,7 +263,9 @@ class LiveGMGN(GMGNAdapter):
             raise RuntimeError("命令必须以 gmgn-cli 开头")
         if "--raw" not in parts:
             parts.append("--raw")
+        sajad.gate(parts[1:])                  # shared GMGN budget with the Wave-2 engine
         out = subprocess.run(parts, capture_output=True, text=True, timeout=25, env=self.env)
+        sajad.note_result(out.stderr if out.returncode != 0 else "")
         if out.returncode != 0:
             raise RuntimeError(f"gmgn-cli error: {out.stderr.strip()}")
         return self._check_code(json.loads(out.stdout))
@@ -360,8 +366,10 @@ class LiveGMGN(GMGNAdapter):
         if self.chain in self._wallet_cache:
             return self._wallet_cache[self.chain]
         # portfolio info 无 --chain 参数：直接调，不经 _cli（_cli 会硬加 --chain）
+        sajad.gate(["portfolio", "info"])
         out = subprocess.run(["gmgn-cli", "portfolio", "info", "--raw"],
                              capture_output=True, text=True, timeout=25, env=self.env)
+        sajad.note_result(out.stderr if out.returncode != 0 else "")
         if out.returncode != 0:
             raise RuntimeError(f"gmgn-cli error: {out.stderr.strip()}")
         data = json.loads(out.stdout)
@@ -1453,6 +1461,17 @@ def screen_once(chain: str) -> dict:
         dev_ok.append(f)
     pool = [(priority_score(f, 0.8, _crowd(f), f.dev_eval), f) for f in dev_ok]
     pool.sort(key=lambda x: -x[0])
+
+    # memetrader: hand Token Screen's safe coins to the Wave-2 watchlist (no extra API calls).
+    # Today's Token Screen hits are tomorrow's wave-2 candidates. Real data on Solana only.
+    if chain == "sol" and ST.live:
+        try:
+            rows_by_addr = {t["address"]: t for t in candidates if t.get("address")}
+            dev_extra = {f.address: dict(dev_eval=f.dev_eval, dev_note=_dev_note_en(f.dev, f.dev_eval))
+                         for f in feats if f.dev_eval is not None}
+            sajad.ENGINE.feed([rows_by_addr[f.address] for f in survivors if f.address in rows_by_addr], dev_extra)
+        except Exception as e:
+            log("WAVE2_FEED_FAIL", chain, str(e)[:200])
     ranked = pool + scored[CFG["dev_pool_n"]:]          # dev 重排的头部在前，池外按初排分续后
     to_llm = ranked[:CFG["llm_max"]]
     for sc, f in ranked[CFG["llm_max"]:]:
@@ -1523,6 +1542,33 @@ def _dev_reject_reason(f) -> str:
         bits.append("已清仓本币")
     detail = ("：" + " · ".join(bits)) if bits else ""
     return f"REJECT Dev 信誉低（评分 {round((f.dev_eval or 0)*100)}/100{detail}）"
+
+def _dev_note_en(dp: dict | None, score: float | None) -> str:
+    """Short English summary of a creator's history for the Wave-2 tab."""
+    if not dp:
+        return "creator history unavailable (neutral)"
+    bits = [f"score {round((score or 0) * 100)}/100"]
+    if dp.get("analyzed", 0) > 0:
+        bits.append(f"{dp.get('rug_rate', 0)*100:.0f}% of last {dp['analyzed']} launches rugged")
+    if dp.get("inner_count", 0) > 50:
+        bits.append(f"{dp['inner_count']} launches never graduated")
+    if dp.get("sec_unsafe", 0) > 0:
+        bits.append("launched unsafe tokens before")
+    if _dev_reskin(dp) >= 0.25:
+        bits.append("reskin relaunches")
+    if dp.get("exited"):
+        bits.append("dev sold out")
+    return ", ".join(bits)
+
+def _wave2_dev_check(addr: str):
+    """Wave-2 asks this when a signal fires: Token Screen's own dev reputation score for the coin."""
+    dp = get_dev_profile(ST.adapter_for("sol"), "sol", addr)
+    if dp is None:
+        return None, "creator history unavailable (neutral)"
+    s = dev_score(dp)
+    return s, _dev_note_en(dp, s)
+
+sajad.ENGINE.dev_checker = _wave2_dev_check
 
 def _reject(f, reason, gate_idx, v):
     log("FILTER", f.symbol_safe, reason)
@@ -1976,17 +2022,8 @@ def api_positions(chain: str = "sol"):
 if STATIC_DIR.exists():
     app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
-# memetrader: Sajad wave-2 paper-trading engine. Its page is /sajad; the original
-# GMGN dashboard stays at / exactly as it was.
-import sajad
+# memetrader: Sajad wave-2 engine API (shown in the dashboard's Wave-2 tab)
 app.include_router(sajad.router)
-
-@app.get("/sajad")
-def sajad_page():
-    f = STATIC_DIR / "sajad.html"
-    if f.exists():
-        return FileResponse(str(f))
-    return JSONResponse(dict(msg="static/sajad.html missing"), status_code=200)
 
 @app.get("/")
 def index():

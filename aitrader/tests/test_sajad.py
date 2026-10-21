@@ -150,3 +150,56 @@ def test_stats():
     sajad.update_trade(b, [candle(60, 1, tp1 * 1.01, 0.98, tp1), candle(120, tp1, tp1, 0.5, 0.55)], now=600, cfg=CFG)
     st = sajad.compute_stats([a, b], CFG, started_at=0, sol_usd=150)
     assert st["closed"] == 2 and st["wins"] == 1 and st["win_rate"] == 0.5
+
+
+def test_escape_reasons():
+    snap = dict(top10=0.20, renounced_mint=True)
+    assert sajad.escape_reason(snap, dict(is_honeypot=1), CFG) == "honeypot detected"
+    assert "top-10" in sajad.escape_reason(snap, dict(top_10_holder_rate=0.40), CFG)
+    assert sajad.escape_reason(snap, dict(top_10_holder_rate=0.25, renounced_mint=1), CFG) is None
+    assert "mint" in sajad.escape_reason(snap, dict(renounced_mint=0), CFG)
+
+
+def _fresh_engine():
+    e = sajad.Engine()
+    e.state = dict(started_at=0, watch={}, trades=[], alerts=[], coin_losses={}, sol_usd=None)
+    return e
+
+
+ROW = dict(address="A1", symbol="AAA", price=0.001, market_cap=300000, history_highest_market_cap=900000,
+           gas_fee=14, bundler_rate=0.1, top_10_holder_rate=0.2, rug_ratio=0.05, is_honeypot=0,
+           renounced_mint=1, creation_timestamp=0, volume=50000, smart_degen_count=5, renowned_count=1)
+
+
+def test_token_screen_feed_adds_to_watchlist():
+    e = _fresh_engine()
+    e._apply_screen([ROW], now=1000, origin="token_screen", extra={"A1": dict(dev_eval=0.7, dev_note="ok")})
+    w = e.state["watch"]["A1"]
+    assert w["from_token_screen"] and w["smart"] == 5 and w["dev_eval"] == 0.7
+    assert "last_screen" not in e.status or e.status["last_screen"] is None
+
+
+def test_escape_closes_open_paper_trade():
+    e = _fresh_engine()
+    e._apply_screen([ROW], now=1000)
+    det = dict(metrics=dict(last=0.001, support=0.00085, ath=0.003), detail="t", last_candle_t=900)
+    e._open_from_signal(e.state["watch"]["A1"], det, [], 1000)
+    e._apply_screen([dict(ROW, top_10_holder_rate=0.45)], now=1100)
+    tr = e.state["trades"][0]
+    assert tr["status"] == "closed" and tr["exit_reason"].startswith("escape")
+
+
+def test_dev_gate_blocks_signal(monkeypatch):
+    e = _fresh_engine()
+    e._apply_screen([ROW], now=1000)
+    e.dev_checker = lambda addr: (0.05, "serial rugger")
+    det = dict(signal=True, stage="signal", detail="t", metrics=dict(last=0.001, support=0.00085, ath=0.003),
+               last_candle_t=900)
+    monkeypatch.setattr(e, "_apply_eval", lambda w, c, now: det)
+    class Src:
+        name = "mock"
+        def kline(self, *a): return []
+    e.source = Src()
+    e.evaluate("A1", 2000)
+    assert not e.state["trades"]
+    assert e.state["watch"]["A1"]["stage"] == "dev_reject"

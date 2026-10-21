@@ -292,6 +292,48 @@ td{padding:5px 10px;vertical-align:middle}
 .view{flex:1;min-height:0}
 #viewToken{display:flex;flex-direction:column;gap:9px}
 #viewWallet{display:block;overflow-y:auto;overflow-x:hidden}
+/* ═══ memetrader · Wave-2 view (reuses .kpis/.card/.pos/table styles) ═══ */
+#viewWave{display:flex;flex-direction:column;gap:9px}
+.viewtabs button .w2badge{display:none;margin-left:7px;background:var(--clay);color:#fff;border-radius:9px;padding:0 6px;font-size:10px;line-height:16px}
+.viewtabs button .w2badge.on{display:inline-block;animation:beat 1.3s infinite}
+.w2off{display:none;border:1px solid #f0a93b55;border-radius:9px;padding:8px 14px;font-size:11.5px;color:var(--amber);background:#f0a93b12}
+.w2off.on{display:block}
+.card>h3 .w2mini{margin-left:6px;font-family:var(--mono);font-size:10px;font-weight:500;color:var(--dim);background:var(--ink2);border:1px solid var(--line);border-radius:6px;padding:2px 8px;cursor:pointer;text-decoration:none}
+.card>h3 .w2mini:hover{color:var(--lime);border-color:var(--lime)}
+.card>h3 a.w2mini{margin-left:auto}
+.w2empty{padding:22px 16px;color:var(--dim);font-size:11.5px;line-height:1.7;text-align:center}
+.w2al{padding:10px 14px;border-bottom:1px solid var(--line)}
+.w2al.new{background:#c8f24a0b;box-shadow:inset 3px 0 0 var(--lime)}
+.w2al .hd{display:flex;align-items:baseline;gap:9px;flex-wrap:wrap}
+.w2al .sym{font-family:var(--disp);font-weight:800;font-size:15px}
+.w2al .when{margin-left:auto;color:var(--dim2);font-size:10px}
+.w2al .why{color:var(--paper2);font-size:11px;margin:4px 0 8px}
+.w2tag{font-size:9.5px;letter-spacing:.06em;border:1px solid var(--line);border-radius:5px;padding:1px 6px;color:var(--dim)}
+.w2tag.lime{color:var(--lime);border-color:var(--lime-d)}.w2tag.amber{color:var(--amber);border-color:#f0a93b66}.w2tag.clay{color:var(--clay);border-color:#ec5a4066}
+.w2plan{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:7px;margin-bottom:8px}
+.w2plan>div{background:var(--ink2);border:1px solid var(--line);border-radius:8px;padding:6px 9px;min-width:0}
+.w2plan .k{color:var(--dim);font-size:9px;letter-spacing:.1em}
+.w2plan .v{font-weight:700;font-size:12px;margin-top:2px;overflow:hidden;text-overflow:ellipsis}
+.w2plan .wide{grid-column:span 4}
+.w2act{display:flex;gap:7px;flex-wrap:wrap;align-items:center}
+.w2act button,.w2act a{font-family:var(--mono);font-size:10.5px;font-weight:600;border-radius:7px;padding:5px 10px;cursor:pointer;background:var(--raise);color:var(--paper2);border:1px solid var(--line);text-decoration:none}
+.w2act .go{background:var(--lime);color:var(--ink);border-color:var(--lime)}
+.w2took{display:none;gap:6px;align-items:center;flex-wrap:wrap;margin-top:8px;font-size:10.5px;color:var(--dim)}
+.w2took.on{display:flex}
+.w2took input{background:var(--ink);border:1px solid var(--line);color:var(--paper);border-radius:7px;padding:5px 8px;font-family:var(--mono);font-size:11px;width:130px}
+.w2stage{font-size:10px;border-radius:5px;padding:2px 7px;background:var(--raise);color:var(--paper2);white-space:nowrap}
+.w2stage.sig{background:#c8f24a22;color:var(--lime)}.w2stage.near{background:#f0a93b1f;color:var(--amber)}.w2stage.bad{background:#ec5a401c;color:var(--clay)}
+#w2Watch td.det{color:var(--paper2);font-size:11px;white-space:normal;min-width:180px}
+#w2Watch a,.w2al a.sym,#w2Open a,#w2Closed a{color:var(--paper);text-decoration:none}
+.w2foot{border-top:1px solid var(--line);padding:6px 14px;font-size:10px;color:var(--dim2)}
+.w2verdict{padding:9px 14px;border-bottom:1px solid var(--line);font-size:11px;line-height:1.55;color:var(--paper2)}
+.w2cl{display:flex;align-items:center;gap:9px;padding:7px 12px;border-bottom:1px solid var(--line);font-size:11px}
+.w2cl .ps{font-family:var(--disp);font-weight:800;font-size:13px;min-width:70px}
+.w2cl .rs{color:var(--dim);flex:1;min-width:90px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.w2bar{height:4px;border-radius:2px;background:var(--raise);overflow:hidden}
+.w2bar i{display:block;height:100%;background:var(--lime)}
+.pos .w2row{display:flex;gap:10px;font-size:10px;color:var(--dim);flex-wrap:wrap}
+.pos .w2row b{color:var(--paper2);font-weight:600}
 
 /* ═══ 钱包评估视图 ═══ */
 .wlt{max-width:1180px;margin:0 auto;display:flex;flex-direction:column;gap:32px;padding-bottom:24px}
@@ -400,6 +442,7 @@ td{padding:5px 10px;vertical-align:middle}
       <div class="viewtabs">
         <button id="tabToken" class="on" onclick="switchView('token')" data-i18n="tab_token">代币筛选</button>
         <button id="tabWallet" onclick="switchView('wallet')" data-i18n="tab_wallet">钱包评估</button>
+        <button id="tabWave" onclick="switchView('wave')"><span data-i18n="tab_wave">二浪</span><span class="w2badge" id="w2Badge"></span></button>
       </div>
     </div>
     <div class="bar-r">
@@ -468,6 +511,41 @@ td{padding:5px 10px;vertical-align:middle}
       <div id="wltResult"><div class="wlt-empty" data-i18n="wlt_empty">输入一个钱包地址 → 交易风格标签 · 真实战绩分 · 可跟单分 · 跟单回测 · Dev 信誉</div></div>
     </div>
   </div>
+
+  <!-- memetrader: Sajad wave-2 (paper). Data from /api/sajad/state; Token Screen feeds its watchlist. -->
+  <div id="viewWave" class="view" style="display:none">
+    <div class="kpis" id="w2Kpis"></div>
+    <div class="w2off" id="w2Off"></div>
+    <div class="grid">
+      <div class="col">
+        <div class="card" style="flex:1.15">
+          <h3><span>Wave-2 Alerts · trade these by hand in GMGN</span><span class="cnt" id="w2AlertCnt"></span><button class="w2mini" id="w2SeenAll">mark all seen</button></h3>
+          <div class="body" id="w2Alerts"></div>
+        </div>
+        <div class="card" style="flex:1">
+          <h3><span>Watchlist · 5-minute charts</span><span class="cnt" id="w2WatchCnt"></span></h3>
+          <div class="body">
+            <table>
+              <thead><tr><th>TOKEN</th><th>MCAP</th><th>ATH</th><th>STAGE</th><th>WHERE IT IS</th><th>FEES</th><th>BUND</th><th>T10</th><th>SMART/KOL</th><th>DEV</th><th>AGE</th></tr></thead>
+              <tbody id="w2Watch"></tbody>
+            </table>
+          </div>
+          <div class="w2foot" id="w2Screen"></div>
+        </div>
+      </div>
+      <div class="col">
+        <div class="card" style="flex:1">
+          <h3><span>Paper Positions</span><span class="cnt" id="w2OpenCnt"></span></h3>
+          <div class="body" id="w2Open"></div>
+        </div>
+        <div class="card" style="flex:1">
+          <h3><span>Results · closed paper trades</span><a class="w2mini" href="/api/sajad/export.csv">CSV</a></h3>
+          <div class="w2verdict" id="w2Verdict"></div>
+          <div class="body" id="w2Closed"></div>
+        </div>
+      </div>
+    </div>
+  </div>
 </div>
 
 <!-- config modal -->
@@ -529,7 +607,7 @@ td{padding:5px 10px;vertical-align:middle}
 const I18N={
   zh:{
     title:'AI Trader - 自动筛选，一键成交，持仓监控',
-    tab_token:'代币筛选', tab_wallet:'钱包评估',
+    tab_token:'代币筛选', tab_wallet:'钱包评估', tab_wave:'二浪',
     wlt_ph:'粘贴钱包地址（当前链）… 交易钱包 / dev 发币钱包都可评估', wlt_go:'评估',
     wlt_empty:'输入一个钱包地址 → 交易风格标签 · 真实战绩分 · 可跟单分 · 跟单回测 · Dev 信誉',
     demobar:'⚠ <b>演示模式</b> · 示例数据，<b>非 GMGN 官方交易功能，不构成投资建议</b> · 想接真实链上数据，请 clone 源码本地运行（自配 API Key，买卖仅在你本机执行） · <a href="https://github.com/GMGNAI/skillmarket-demos/tree/main/aitrader" target="_blank" rel="noopener" style="color:var(--lime);font-weight:600">查看源代码 ↗</a>',
@@ -692,7 +770,7 @@ const I18N={
   },
   en:{
     title:'AI Trader - Auto-screen, One-Click Trade, Position Monitor',
-    tab_token:'Token Screen', tab_wallet:'Wallet Eval',
+    tab_token:'Token Screen', tab_wallet:'Wallet Eval', tab_wave:'Wave-2',
     wlt_ph:'Paste a wallet address (current chain)… traders & dev wallets both supported', wlt_go:'Evaluate',
     wlt_empty:'Enter a wallet address → style tags · track-record score · copy-tradeability · copy backtest · dev reputation',
     demobar:'⚠ <b>Demo Mode</b> · sample data, <b>not an official GMGN trading feature, not investment advice</b> · for real on-chain data, clone the source and run locally (your own API key; trades execute only on your machine) · <a href="https://github.com/GMGNAI/skillmarket-demos/blob/main/aitrader/README.en.md" target="_blank" rel="noopener" style="color:var(--lime);font-weight:600">View source ↗</a>',
@@ -1724,8 +1802,11 @@ function switchView(v){
   curView=v; sessionStorage.setItem('aitrader_view',v);
   document.getElementById('tabToken').classList.toggle('on',v==='token');
   document.getElementById('tabWallet').classList.toggle('on',v==='wallet');
+  document.getElementById('tabWave').classList.toggle('on',v==='wave');
   document.getElementById('viewToken').style.display=v==='token'?'flex':'none';
   document.getElementById('viewWallet').style.display=v==='wallet'?'block':'none';
+  document.getElementById('viewWave').style.display=v==='wave'?'flex':'none';
+  if(v==='wave')w2Refresh();
   if(v==='wallet'){const a=document.getElementById('wltAddr');if(a)a.focus();}
 }
 
@@ -1972,6 +2053,187 @@ function renderWallet(){
 
 /* ── init ── */
 applyI18n();tick();
+/* ═══ memetrader · Wave-2 tab (Sajad method, paper trading) ═══ */
+let w2Data=null, w2Took=new Set(), w2PrevUnseen=null;
+const w2esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const w2mc=v=>v==null?"–":v>=1e9?`$${(v/1e9).toFixed(2)}B`:v>=1e6?`$${(v/1e6).toFixed(2)}M`:v>=1e3?`$${(v/1e3).toFixed(0)}K`:`$${(+v).toFixed(0)}`;
+const w2pct=(v,d=0)=>v==null?"–":`${v>0?"+":""}${(v*100).toFixed(d)}%`;
+const w2col=v=>v==null?"var(--dim)":v>0?"var(--lime)":v<0?"var(--clay)":"var(--dim)";
+const w2sol=v=>v==null?"–":`${v>0?"+":""}${v.toFixed(3)} SOL`;
+const w2ago=ts=>{if(!ts)return"–";const s=Date.now()/1000-ts;return s<90?`${Math.round(s)}s ago`:s<5400?`${Math.round(s/60)}m ago`:`${(s/3600).toFixed(1)}h ago`;};
+const w2hrs=h=>h==null?"–":h<1?`${Math.round(h*60)}m`:h<48?`${h.toFixed(1)}h`:`${(h/24).toFixed(1)}d`;
+const w2time=ts=>new Date(ts*1000).toLocaleString([], {month:"short",day:"numeric",hour:"2-digit",minute:"2-digit"});
+const w2gmgn=a=>`https://gmgn.ai/sol/token/${encodeURIComponent(a)}`;
+const W2_NEAR=["below_line","weak_volume","line_weak"], W2_BAD=["dead","dev_reject","falling"];
+
+async function w2Refresh(){
+  if(document.hidden&&w2Data)return;
+  try{
+    const r=await fetch(API+'/api/sajad/state');
+    if(!r.ok)throw new Error('HTTP '+r.status);
+    w2Data=await r.json();
+    document.getElementById('w2Off').classList.remove('on');
+    w2Render();
+  }catch(e){
+    const off=document.getElementById('w2Off');
+    off.textContent='Wave-2 runs on your local backend (memetrader on the VPS). It is not available in DEMO mode or when the backend is unreachable.';
+    off.classList.add('on');
+  }
+}
+
+function w2Render(){
+  const d=w2Data; if(!d)return;
+  // tab badge + desktop notification for new alerts
+  const b=document.getElementById('w2Badge');
+  b.textContent=d.unseen||''; b.classList.toggle('on',d.unseen>0);
+  if(w2PrevUnseen!==null&&d.unseen>w2PrevUnseen){
+    toast(`Wave-2: new setup on ${d.alerts[0]?d.alerts[0].symbol:'a coin'}`,'ok');
+    if('Notification'in window&&Notification.permission==='granted')new Notification('memetrader',{body:`${d.alerts[0].symbol}: new wave-2 setup`});
+  }
+  w2PrevUnseen=d.unseen;
+  if(curView!=='wave')return;
+  w2Kpis(d); w2Alerts(d); w2Watch(d); w2Open(d); w2Closed(d);
+}
+
+function w2Kpis(d){
+  const s=d.stats, st=d.status, fed=d.watch.filter(w=>w.from_token_screen).length;
+  const tile=(k,v,sub,ac,alert)=>`<div class="kpi ${alert?'alert':''}" style="--ac:${ac}"><div class="k">${k}</div><div class="v">${v}</div><div class="sub">${sub}</div></div>`;
+  document.getElementById('w2Kpis').innerHTML=[
+    tile('WATCHING',d.watch.length,`${fed} fed by Token Screen`,'var(--teal)'),
+    tile('NEW ALERTS',d.unseen,`${d.alerts.length} total`,'var(--lime)',d.unseen>0),
+    tile('PAPER OPEN',d.open.length,`open P&L ${w2sol(s.open_pnl_sol)}`,'var(--blue)'),
+    tile('CLOSED',s.closed,`${s.wins} won · ${s.losses} lost`,'var(--paper2)'),
+    tile('WIN RATE',s.win_rate==null?'–':`${Math.round(s.win_rate*100)}<small>%</small>`,`avg ${w2pct(s.avg_win_pct)} / ${w2pct(s.avg_loss_pct)}`,'var(--amber)'),
+    tile('NET PROFIT',`<span style="color:${w2col(s.net_sol)}">${s.net_sol>0?'+':''}${s.net_sol.toFixed(3)}</span><small> SOL</small>`,`profit factor ${s.profit_factor==null?'–':s.profit_factor.toFixed(2)}`,'var(--lime)'),
+    tile(`VS $${s.plan_usd} PLAN`,s.monthly_usd==null?'–':`$${s.monthly_usd.toFixed(0)}<small>/mo</small>`,s.monthly_usd==null?`needs 2 days (have ${s.days_running.toFixed(1)})`:`${s.days_running.toFixed(1)} days · SOL $${s.sol_usd.toFixed(0)}`,s.covers_plan?'var(--lime)':'var(--clay)',!!st.last_error),
+  ].join('');
+  const src=d.source==='live'?'LIVE GMGN data':d.source?'MOCK data (no key)':'starting';
+  document.getElementById('w2Screen').innerHTML=
+    `${w2esc(src)} · last scan ${w2ago(st.last_screen)} · ${st.screen.rows} coins aged 1h–2d over $100K, ${st.screen.passed} passed`+
+    (st.last_feed?` · Token Screen fed ${st.feed_passed} ${w2ago(st.last_feed)}`:'')+
+    ` · API calls ${st.api_calls}${st.rate_bans?` · rate bans ${st.rate_bans}`:''}`+
+    (st.last_error?` · <span style="color:var(--amber)">⚠ ${w2esc(st.last_error)}</span>`:'');
+}
+
+function w2Alerts(d){
+  document.getElementById('w2AlertCnt').textContent=d.unseen?`${d.unseen} new`:'';
+  const el=document.getElementById('w2Alerts');
+  if(!d.alerts.length){el.innerHTML='<div class="w2empty">No wave-2 setups yet. They take hours to form: a coin has to run, pull back 40%+, hold support, then break its downtrend line on volume.</div>';return;}
+  const byId=Object.fromEntries([...d.open,...d.closed].map(t=>[t.id,t]));
+  el.innerHTML=d.alerts.map(a=>{
+    const t=byId[a.id]||{}, id=w2esc(a.id);
+    const tags=[
+      a.seen?'':'<span class="w2tag lime">NEW</span>',
+      a.from_token_screen?'<span class="w2tag">via Token Screen</span>':'',
+      (a.smart||a.kol)?`<span class="w2tag">smart ${a.smart||0} / KOL ${a.kol||0}</span>`:'',
+      a.dev_eval!=null?`<span class="w2tag ${a.dev_eval>=0.5?'lime':'amber'}" title="${w2esc(a.dev_note)}">dev ${Math.round(a.dev_eval*100)}</span>`:'',
+      t.manual?`<span class="w2tag lime">you took ${t.manual.size_sol} SOL</span>`:'',
+    ].join(' ');
+    const targets=a.targets.map(x=>`${w2mc(x.mcap)} <span style="color:var(--dim)">${Math.round(x.frac*100)}%</span>`).join(' → ');
+    return `<div class="w2al ${a.seen?'':'new'}">
+      <div class="hd"><a class="sym" href="${w2gmgn(a.address)}" target="_blank" rel="noopener">${w2esc(a.symbol)}</a> ${tags}<span class="when">${w2time(a.ts)}</span></div>
+      <div class="why">${w2esc(a.detail)}</div>
+      <div class="w2plan">
+        <div><div class="k">BUY AROUND</div><div class="v">${w2mc(a.entry_mcap)}</div></div>
+        <div><div class="k">STOP LOSS</div><div class="v" style="color:var(--clay)">${w2mc(a.stop_mcap)} <span style="color:var(--dim)">-${(a.stop_pct*100).toFixed(0)}%</span></div></div>
+        <div><div class="k">PAPER SIZE</div><div class="v">${a.stake_sol} SOL</div></div>
+        <div><div class="k">PAPER TRADE</div><div class="v" style="color:${w2col(t.pnl_pct)}">${t.status?w2pct(t.pnl_pct,1)+(t.status==='closed'?' · closed':''):'–'}</div></div>
+        <div class="wide"><div class="k">SELL TARGETS, THEN TRAIL THE LAST 20% (MOON BAG)</div><div class="v">${targets}</div></div>
+      </div>
+      <div class="w2act">
+        <a class="go" href="${w2gmgn(a.address)}" target="_blank" rel="noopener">Open in GMGN</a>
+        <button data-w2copy="${w2esc(a.address)}">Copy address</button>
+        <button data-w2took="${id}">I took this</button>
+        ${a.seen?'':`<button data-w2seen="${id}">Mark seen</button>`}
+      </div>
+      <div class="w2took ${w2Took.has(a.id)?'on':''}" id="w2took-${id}">
+        <input type="number" step="0.01" min="0.01" placeholder="SOL you spent" id="w2size-${id}" value="${t.manual?t.manual.size_sol:''}">
+        <input type="number" step="any" placeholder="your entry price (optional)" id="w2fill-${id}">
+        <button class="go" data-w2save="${id}">Save</button>
+        ${t.manual?`<button data-w2clear="${id}">Undo</button>`:''}
+        <span>Empty price = paper entry. Price = token price in USD on GMGN.</span>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function w2Watch(d){
+  document.getElementById('w2WatchCnt').textContent=`${d.watch.length} coins`;
+  const el=document.getElementById('w2Watch');
+  if(!d.watch.length){el.innerHTML='<tr><td colspan="11" class="w2empty">Nothing yet. The first scan runs within a minute of starting, and Token Screen adds its safe coins as it scans.</td></tr>';return;}
+  el.innerHTML=d.watch.map(w=>{
+    const c=w.stage==='signal'?'sig':W2_NEAR.includes(w.stage)?'near':W2_BAD.includes(w.stage)?'bad':'';
+    const age=w.created?(Date.now()/1000-w.created)/3600:null;
+    const dev=w.dev_eval==null?'–':`<span title="${w2esc(w.dev_note)}" style="color:${w.dev_eval>=0.5?'var(--lime)':w.dev_eval>=0.15?'var(--amber)':'var(--clay)'}">${Math.round(w.dev_eval*100)}</span>`;
+    return `<tr><td><a href="${w2gmgn(w.address)}" target="_blank" rel="noopener"><b>${w2esc(w.symbol)}</b></a>${w.from_token_screen?' <span class="w2tag">TS</span>':''}</td>
+      <td>${w2mc(w.mcap)}</td><td>${w2mc(w.ath_mcap)}</td><td><span class="w2stage ${c}">${w2esc((w.stage||'').replace(/_/g,' '))}</span></td>
+      <td class="det">${w2esc(w.detail)}</td><td>${(w.fees_sol||0).toFixed(1)}</td><td>${Math.round((w.bundler||0)*100)}%</td><td>${Math.round((w.top10||0)*100)}%</td>
+      <td>${w.smart||0}/${w.kol||0}</td><td>${dev}</td><td>${w2hrs(age)}</td></tr>`;
+  }).join('');
+}
+
+function w2Open(d){
+  document.getElementById('w2OpenCnt').textContent=d.open.length?`${d.open.length} open`:'';
+  const el=document.getElementById('w2Open');
+  if(!d.open.length){el.innerHTML='<div class="w2empty">No open paper trades. Each alert opens one automatically and manages it with Sajad\'s exits.</div>';return;}
+  el.innerHTML=d.open.map(t=>{
+    const sold=1-t.remaining, next=t.targets.find(x=>!x.hit);
+    return `<div class="pos">
+      <div class="top"><a class="ps" href="${w2gmgn(t.address)}" target="_blank" rel="noopener">${w2esc(t.symbol)}<small>held ${w2hrs(t.hold_h)}${t.manual?' · you took it':''}</small></a>
+        <span class="pnl ${t.pnl_pct>=0?'up':'dn'}">${w2pct(t.pnl_pct,1)}</span></div>
+      <div class="w2row"><span>entry <b>${w2mc(t.entry_mcap)}</b></span><span>now <b>${w2mc(t.last_mcap)}</b></span><span>peak <b>${w2pct(t.peak_gain)}</b></span>
+        <span>${t.tp1_done?'trailing stop':'stop'} <b style="color:var(--clay)">${w2mc(t.stop_mcap)}</b></span></div>
+      <div class="w2row"><span>sold <b>${Math.round(sold*100)}%</b></span><span>next <b>${next?w2mc(next.mcap)+' ('+w2esc(next.label)+')':'moon bag trailing'}</b></span>
+        ${t.manual?`<span>you <b style="color:${w2col(t.manual_pnl_pct)}">${w2pct(t.manual_pnl_pct,1)}</b></span>`:''}</div>
+      <div class="w2bar"><i style="width:${Math.round(sold*100)}%"></i></div>
+    </div>`;
+  }).join('');
+}
+
+function w2Closed(d){
+  const s=d.stats; let v;
+  if(s.closed<20||s.monthly_usd==null)v=`Need 20 closed trades and 2 days of data before trusting these numbers (have ${s.closed} trades, ${s.days_running.toFixed(1)} days). Every paper trade stakes ${s.stake_sol} SOL and pays slippage and fees on each fill.`;
+  else if(s.covers_plan)v=`✅ About $${s.monthly_usd.toFixed(0)}/month on ${s.stake_sol} SOL stakes, which covers the $${s.plan_usd} GMGN Plus plan. Automation is worth considering.`;
+  else v=`Not yet: about $${s.monthly_usd.toFixed(0)}/month vs the $${s.plan_usd} plan. Keep trading by hand, or tune the rules.`;
+  document.getElementById('w2Verdict').textContent=v;
+  const el=document.getElementById('w2Closed');
+  if(!d.closed.length){el.innerHTML='<div class="w2empty">No closed paper trades yet.</div>';return;}
+  el.innerHTML=d.closed.map(t=>`<div class="w2cl">
+      <a class="ps" href="${w2gmgn(t.address)}" target="_blank" rel="noopener">${w2esc(t.symbol)}</a>
+      <b style="color:${w2col(t.pnl_pct)};min-width:58px">${w2pct(t.pnl_pct,1)}</b>
+      <span class="rs" title="${w2esc(t.exit_reason)} · closed ${w2time(t.closed_at)}">${w2esc(t.exit_reason)} · peak ${w2pct(t.peak_gain)} · ${w2hrs(t.hold_h)}</span>
+      ${t.manual?`<span class="w2tag" style="color:${w2col(t.manual_pnl_pct)}">you ${w2pct(t.manual_pnl_pct,1)}</span>`:''}</div>`).join('');
+}
+
+async function w2Post(url,body){
+  const r=await fetch(API+url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+  if(!r.ok)throw new Error(await r.text());
+  return r.json();
+}
+document.addEventListener('click',async ev=>{
+  const b=ev.target.closest('[data-w2seen],[data-w2copy],[data-w2took],[data-w2save],[data-w2clear],#w2SeenAll');
+  if(!b)return;
+  try{
+    if(b.id==='w2SeenAll')await w2Post('/api/sajad/seen',{});
+    else if(b.dataset.w2seen)await w2Post('/api/sajad/seen',{id:b.dataset.w2seen});
+    else if(b.dataset.w2copy){await navigator.clipboard.writeText(b.dataset.w2copy);toast('Address copied','ok');return;}
+    else if(b.dataset.w2took){const id=b.dataset.w2took;w2Took.has(id)?w2Took.delete(id):w2Took.add(id);document.getElementById('w2took-'+id).classList.toggle('on');return;}
+    else if(b.dataset.w2save){
+      const id=b.dataset.w2save, size=parseFloat(document.getElementById('w2size-'+id).value), fill=parseFloat(document.getElementById('w2fill-'+id).value);
+      if(!(size>0)){toast('Enter how much SOL you spent','err');return;}
+      await w2Post('/api/sajad/manual',{trade_id:id,size_sol:size,fill_price:fill>0?fill:null});
+      await w2Post('/api/sajad/seen',{id}); w2Took.delete(id); toast('Saved: your trade is tracked against the paper version','ok');
+    }
+    else if(b.dataset.w2clear)await w2Post('/api/sajad/manual',{trade_id:b.dataset.w2clear,clear:true});
+    w2Refresh();
+  }catch(e){toast(e.message,'err');}
+});
+document.addEventListener('visibilitychange',()=>{if(!document.hidden)w2Refresh();});
+if('Notification'in window&&Notification.permission==='default')
+  document.getElementById('tabWave').addEventListener('click',()=>Notification.requestPermission(),{once:true});
+setInterval(w2Refresh,10000);
+w2Refresh();
+
 switchView(curView);
 setInterval(tick,1000);
 pollTimer=setInterval(scanCycle,pollMs);
