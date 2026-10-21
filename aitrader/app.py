@@ -73,11 +73,11 @@ CFG = {
     "min_llm_conviction": 0.6,
     # dev 评估维度：初排后只对前 dev_pool_n 个幸存者额外查 dev 历史（token info 的 dev 对象），
     # 结果按地址缓存 dev_info_ttl_s 秒（dev 历史变化慢，跨轮复用、不每轮重拉，省 cli 配额）。
-    "dev_pool_n": 24,            # >llm_max，让 dev 子分能重排 gate3 名额边界
+    "dev_pool_n": 3,            # >llm_max，让 dev 子分能重排 gate3 名额边界
     "dev_info_ttl_s": 600,
     "min_dev_score": 0.15,       # dev 评分过滤：低于此分（工厂号/连环换皮/喷币）直接砍，不进 LLM/待决策
-    "dev_sec_scan_n": 3,         # dev 安全扫描：对该 dev 最近 N 个发币逐个查 token security（不安全则降分+提示风险）
-    "dev_fetch_workers": 8,      # dev 历史并发拉取线程数：冷缓存首轮把 24×(info+created+扫描) 串行 cli 改为并发，省掉「一直 loading」的长延时（subprocess 等待时释放 GIL）
+    "dev_sec_scan_n": 1,         # dev 安全扫描：对该 dev 最近 N 个发币逐个查 token security（不安全则降分+提示风险）
+    "dev_fetch_workers": 1,      # dev 历史并发拉取线程数：冷缓存首轮把 24×(info+created+扫描) 串行 cli 改为并发，省掉「一直 loading」的长延时（subprocess 等待时释放 GIL）
     # 排序档位：趋势动能跟随（看现在在不在涨、买盘强不强、量价齐升）
     "rank_profile": "momentum",
     "rank_weights": {
@@ -121,7 +121,7 @@ def native_decimals(chain): return NATIVE_DECIMALS.get(chain, 9)
 # 已解锁(False)：LIVE 模式 + 已配 GMGN_PRIVATE_KEY 时，「一键买入/平仓」会真实发单、动用资金、不可逆。
 # 仍是人在环：只有用户点按钮才成交；SHADOW 是默认安全态，需手动切 LIVE 才真发。
 # ⚠️ 真实下单要求 ~/.config/gmgn/.env 里 GMGN_PRIVATE_KEY 非空（签名密钥），否则 gmgn-cli 报错。
-LIVE_TRADING_DISABLED = False
+LIVE_TRADING_DISABLED = True
 
 # 公开演示（只读广播）：设环境变量 PUBLIC_DEMO=1 开启。用于把看板挂公网给不特定访客看
 # 真实筛选数据，同时把后端收敛成纯只读：
@@ -152,7 +152,7 @@ def default_trending_cmd(chain: str = "sol") -> str:
     return (f"gmgn-cli market trending --interval 1h --order-by volume "
             f"--direction desc --limit 100 --chain {chain} --raw")
 DEFAULT_TRENDING_CMD = default_trending_cmd("sol")   # 兼容旧引用
-DEFAULT_POLL_S = 5.6
+DEFAULT_POLL_S = 60
 # 同链 trending 短缓存：TTL 内多个 tab/请求复用同一次 cli 结果（同链多开不放大配额）。
 TRENDING_CACHE_TTL = 3.0
 
@@ -1976,8 +1976,20 @@ def api_positions(chain: str = "sol"):
 if STATIC_DIR.exists():
     app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
+# memetrader: Sajad wave-2 paper-trading engine + dashboard (the default page).
+# GMGN's original screener is still available at /gmgn, but opening it spends API budget.
+import sajad
+app.include_router(sajad.router)
+
 @app.get("/")
 def index():
+    f = STATIC_DIR / "sajad.html"
+    if f.exists():
+        return FileResponse(str(f))
+    return JSONResponse(dict(msg="static/sajad.html missing"), status_code=200)
+
+@app.get("/gmgn")
+def gmgn_index():
     f = STATIC_DIR / "index.html"
     if f.exists():
         return FileResponse(str(f))
@@ -1988,6 +2000,8 @@ def _maybe_start_public_broadcast():
     # 公开演示模式：启动后台守护线程定时刷新真实筛选缓存（仅此线程触发 CLI）。
     if PUBLIC_DEMO:
         threading.Thread(target=_public_broadcast_loop, daemon=True).start()
+    else:
+        sajad.ENGINE.start()
 
 if __name__ == "__main__":
     import uvicorn

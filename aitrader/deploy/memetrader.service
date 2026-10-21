@@ -1,0 +1,16 @@
+[Unit]
+Description=memetrader - Sajad wave-2 paper trader (GMGN data)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=wil
+WorkingDirectory=/home/wil/memetrader/aitrader
+# gmgn-cli lives in the user's global npm folder
+Environment=PATH=/home/wil/.npm-global/bin:/usr/local/bin:/usr/bin:/bin
+ExecStart=/home/wil/memetrader/aitrader/.venv/bin/uvicorn app:app --host 127.0.0.1 --port 8010
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

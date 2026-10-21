@@ -892,7 +892,7 @@ const fill=n=>`<svg viewBox="0 0 24 24" fill="currentColor" stroke="none">${I[n]
    仅 file:// 直接打开时回退到本地端口。连不上(纯静态/GitHub Pages)→ 自动 DEMO。 */
 const API=location.protocol==='file:'?"http://127.0.0.1:8000":"";
 let source="demo", bePolling=false, liveMode=false, tradingLocked=false;
-let pollMs=5600, pollTimer=null, defaultTrendCmd="", curChain="sol", beReady=false, buyAmount=0.01;
+let pollMs=60000, pollTimer=null, defaultTrendCmd="", curChain="sol", beReady=false, buyAmount=0.01;
 let onlyHeld=false;            // TOKEN 旁警告图标：只看当前持仓的币
 function toggleOnlyHeld(){
   onlyHeld=!onlyHeld;
