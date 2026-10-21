@@ -1976,20 +1976,20 @@ def api_positions(chain: str = "sol"):
 if STATIC_DIR.exists():
     app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
-# memetrader: Sajad wave-2 paper-trading engine + dashboard (the default page).
-# GMGN's original screener is still available at /gmgn, but opening it spends API budget.
+# memetrader: Sajad wave-2 paper-trading engine. Its page is /sajad; the original
+# GMGN dashboard stays at / exactly as it was.
 import sajad
 app.include_router(sajad.router)
 
-@app.get("/")
-def index():
+@app.get("/sajad")
+def sajad_page():
     f = STATIC_DIR / "sajad.html"
     if f.exists():
         return FileResponse(str(f))
     return JSONResponse(dict(msg="static/sajad.html missing"), status_code=200)
 
-@app.get("/gmgn")
-def gmgn_index():
+@app.get("/")
+def index():
     f = STATIC_DIR / "index.html"
     if f.exists():
         return FileResponse(str(f))

@@ -3,7 +3,7 @@
 Wil's Solana memecoin paper trader, following @SajadTrades' wave-2 method. Forked from GMGN's `skillmarket-demos/aitrader`.
 
 - `sajad.py`: the strategy engine (screen → watchlist → wave-2 signal → paper trade → results) and its `/api/sajad/*` routes. All Sajad rules and numbers are in `DEFAULT_CFG`; override them in `sajad_config.json` (not tracked by git).
-- `static/sajad.html`: the dashboard served at `/`. GMGN's original screener is still at `/gmgn`, but opening it spends API budget.
+- `static/sajad.html`: the Sajad page at `/sajad`. The original GMGN dashboard stays at `/`, unchanged apart from a slower poll (60s) for the free plan.
 - `app.py`: GMGN's original backend. Kept, with trading locked (`LIVE_TRADING_DISABLED = True`) and its polling slowed for the free plan.
 - `tests/test_sajad.py`: detector and paper-engine tests. Run `python -m pytest tests -q`.
 - `deploy/memetrader.service`: systemd unit (port 8010, localhost only).
