@@ -43,7 +43,11 @@ EVENTS_PATH = OUT_DIR / "sajad_events.jsonl"
 CONFIG_OVERRIDE_PATH = HERE / "sajad_config.json"   # optional, edit to tune without touching code
 ENV_PATH = pathlib.Path.home() / ".config" / "gmgn" / ".env"
 SOL_MINT = "So11111111111111111111111111111111111111112"
-RULES_VERSION = 2   # v2: confirmed breakouts, structural stop, 5m-close stops, one loss per coin
+RULES_VERSION = 2
+
+# gmgn-cli retries once by itself after a short 429; a retry during a ban extends the ban.
+# Turn that off for every gmgn-cli call this process makes (Token Screen's too).
+os.environ["GMGN_RATE_LIMIT_AUTO_RETRY_MAX_WAIT_MS"] = "0"   # v2: confirmed breakouts, structural stop, 5m-close stops, one loss per coin
 
 # ──────────────────────────────────────────────────────────────────────────
 # Config. Every number here comes from Sajad's videos; see the comments.
@@ -52,11 +56,13 @@ RULES_VERSION = 2   # v2: confirmed breakouts, structural stop, 5m-close stops, 
 DEFAULT_CFG: dict[str, Any] = {
     # Rate limiting. Free plan bucket = 5 weight. We refill slowly to stay far from bans.
     "rate_capacity": 5.0,
-    "rate_refill_per_s": 1.0,          # raise to ~4 on the Plus plan
+    # GMGN's free plan refills slower than its docs suggest: ~19 calls in a few minutes got a 429.
+    # 0.25 weight/s = 15 weight/min for both tabs together. Raise to ~3 on the Plus plan.
+    "rate_refill_per_s": 0.25,
     "weights": {"trending": 3, "kline": 2, "other": 2},
 
     # Screen ("yesterday's runners" + "same-day wave 2"): age 1h-2d, mcap >= 100k
-    "screen_every_s": 60,
+    "screen_every_s": 120,
     "screen_min_age": "1h",
     "screen_max_age": "48h",
     "screen_min_mcap": 100_000,
@@ -68,7 +74,7 @@ DEFAULT_CFG: dict[str, Any] = {
 
     # Watchlist
     "watch_max": 15,
-    "watch_eval_every_s": 180,         # re-read 5m candles per coin every 3 min
+    "watch_eval_every_s": 300,         # re-read 5m candles per coin once per new 5m candle
     "watch_max_age_h": 96,             # meme life cycle is 3-4 days
     "watch_drop_below_mcap": 40_000,   # dead
     "max_losses_per_coin": 1,          # "if it didn't work, walk away from that coin"
@@ -111,7 +117,7 @@ DEFAULT_CFG: dict[str, Any] = {
     "moonbag_trail_pct": 0.40,         # once only the moon bag is left
     "time_stop_h": 6, "time_stop_min_gain": 0.30,
     "max_hold_h": 72,
-    "update_every_s": 60,
+    "update_every_s": 120,             # all 1m candles since the last check are still replayed
     "over_lower_high": 0.10,           # "it's over": lower high >=10% under the peak...
     "over_volume_ratio": 0.40,         # ...and volume < 40% of what it was at the peak
 
@@ -172,7 +178,7 @@ class RateLimiter:
     def __init__(self, capacity: float, refill_per_s: float):
         self.capacity = capacity
         self.refill = refill_per_s
-        self.tokens = capacity
+        self.tokens = 0.0                # start empty: GMGN's bucket may still be drained after a restart
         self.last = time.monotonic()
         self.paused_until = 0.0          # wall-clock seconds
         self.lock = threading.Lock()
