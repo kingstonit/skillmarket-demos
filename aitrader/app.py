@@ -75,10 +75,10 @@ CFG = {
     "min_llm_conviction": 0.6,
     # dev 评估维度：初排后只对前 dev_pool_n 个幸存者额外查 dev 历史（token info 的 dev 对象），
     # 结果按地址缓存 dev_info_ttl_s 秒（dev 历史变化慢，跨轮复用、不每轮重拉，省 cli 配额）。
-    "dev_pool_n": 3,            # >llm_max，让 dev 子分能重排 gate3 名额边界
+    "dev_pool_n": 2,            # >llm_max，让 dev 子分能重排 gate3 名额边界
     "dev_info_ttl_s": 600,
     "min_dev_score": 0.15,       # dev 评分过滤：低于此分（工厂号/连环换皮/喷币）直接砍，不进 LLM/待决策
-    "dev_sec_scan_n": 1,         # dev 安全扫描：对该 dev 最近 N 个发币逐个查 token security（不安全则降分+提示风险）
+    "dev_sec_scan_n": 0,         # dev 安全扫描：对该 dev 最近 N 个发币逐个查 token security（不安全则降分+提示风险）
     "dev_fetch_workers": 1,      # dev 历史并发拉取线程数：冷缓存首轮把 24×(info+created+扫描) 串行 cli 改为并发，省掉「一直 loading」的长延时（subprocess 等待时释放 GIL）
     # 排序档位：趋势动能跟随（看现在在不在涨、买盘强不强、量价齐升）
     "rank_profile": "momentum",

@@ -57,8 +57,8 @@ DEFAULT_CFG: dict[str, Any] = {
     # Rate limiting. Free plan bucket = 5 weight. We refill slowly to stay far from bans.
     "rate_capacity": 5.0,
     # GMGN's free plan refills slower than its docs suggest: ~19 calls in a few minutes got a 429.
-    # 0.25 weight/s = 15 weight/min for both tabs together. Raise to ~3 on the Plus plan.
-    "rate_refill_per_s": 0.25,
+    # 0.5 weight/s = 30 weight/min for both tabs together (1.0 got banned). Raise to ~3 on Plus.
+    "rate_refill_per_s": 0.5,
     "weights": {"trending": 3, "kline": 2, "other": 2},
 
     # Screen ("yesterday's runners" + "same-day wave 2"): age 1h-2d, mcap >= 100k
