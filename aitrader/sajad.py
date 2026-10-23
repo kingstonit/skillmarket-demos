@@ -43,6 +43,7 @@ EVENTS_PATH = OUT_DIR / "sajad_events.jsonl"
 CONFIG_OVERRIDE_PATH = HERE / "sajad_config.json"   # optional, edit to tune without touching code
 ENV_PATH = pathlib.Path.home() / ".config" / "gmgn" / ".env"
 SOL_MINT = "So11111111111111111111111111111111111111112"
+RULES_VERSION = 2   # v2: confirmed breakouts, structural stop, 5m-close stops, one loss per coin
 
 # ──────────────────────────────────────────────────────────────────────────
 # Config. Every number here comes from Sajad's videos; see the comments.
@@ -70,7 +71,7 @@ DEFAULT_CFG: dict[str, Any] = {
     "watch_eval_every_s": 180,         # re-read 5m candles per coin every 3 min
     "watch_max_age_h": 96,             # meme life cycle is 3-4 days
     "watch_drop_below_mcap": 40_000,   # dead
-    "max_losses_per_coin": 2,          # "if a coin hasn't worked once or twice, stay away"
+    "max_losses_per_coin": 1,          # "if it didn't work, walk away from that coin"
     "min_dev_score": 0.15,             # Token Screen's dev reputation cut-off (serial ruggers, reskins)
     "escape_top10_jump": 0.15,         # escape if top-10 holders rise 15 points after entry
 
@@ -98,7 +99,8 @@ DEFAULT_CFG: dict[str, Any] = {
     "exit_slippage": 0.03,
     "stop_slippage": 0.05,
     "fee_pct": 0.01,                   # per side
-    "min_risk": 0.10, "max_risk": 0.20,  # stop 10-20% below entry, placed under support
+    "min_risk": 0.10, "max_risk": 0.20,  # stop 10-20% below entry; skip the trade if it would need more
+    "emergency_stop": 0.30,            # mid-candle crash exit; normal stops wait for a 5m close
     "support_buffer": 0.03,
     "tp1_mult": 2.0, "tp1_min_mult": 1.5, "tp1_frac": 0.50,
     "ladder_frac": 0.10, "ladder_count": 3,
@@ -524,26 +526,32 @@ def detect_wave2(candles: list[dict], cfg: dict) -> dict:
         return res
 
     margin = math.log(1 + cfg["breakout_margin"])
-    above = math.log(closes[L]) - line(L)
-    prev_above = math.log(closes[L - 1]) - line(L - 1)
-    m["vs_line"] = math.exp(above) - 1
-    if above < margin:
-        res.update(stage="below_line",
-                   detail=(f"{-m['vs_line']:.0%} below the downtrend line" if m["vs_line"] < -0.005
-                           else "touching the downtrend line, needs a clean close above it"))
+    above = [math.log(closes[i]) - line(i) for i in range(n)]
+    m["vs_line"] = math.exp(above[L]) - 1
+    # Sajad: the first poke above the line is often a fake-out. Enter only when the candle after
+    # the breakout also closes above the line (the break held / retested and pushed off).
+    if above[L] < margin:
+        if above[L - 1] >= margin:
+            res.update(stage="fakeout", detail="broke the line, then closed back under it (fake-out)")
+        else:
+            res.update(stage="below_line",
+                       detail=(f"{-m['vs_line']:.0%} below the downtrend line" if m["vs_line"] < -0.005
+                               else "touching the downtrend line, needs a clean close above it"))
         return res
-    if prev_above >= margin and math.log(closes[L - 2]) - line(L - 2) >= margin:
+    if above[L - 1] < margin:
+        res.update(stage="breaking_out", detail="broke the line, waiting for one more 5-min close above it")
+        return res
+    if above[L - 2] >= margin:
         res.update(stage="already_broke", detail="broke out earlier, missed the entry")
         return res
     if m["vs_line"] > cfg["max_extension"]:
         res.update(stage="extended", detail=f"{m['vs_line']:.0%} above the line, too late to chase")
         return res
 
-    prior = vols[max(0, L - 12):L]
+    B = L - 1                                         # the breakout candle
+    prior = vols[max(0, B - 12):B]
     avg = sum(prior) / len(prior) if prior else 0
-    vol_ratio = vols[L] / avg if avg > 0 else 0
-    recent_ratio = (sum(vols[L - 1:L + 1]) / 2) / avg if avg > 0 else 0
-    m["volume_ratio"] = max(vol_ratio, recent_ratio)
+    m["volume_ratio"] = max(vols[B], vols[L]) / avg if avg > 0 else 0
     if m["volume_ratio"] < cfg["volume_mult"]:
         res.update(stage="weak_volume", detail=f"broke the line on weak volume ({m['volume_ratio']:.1f}x)")
         return res
@@ -551,13 +559,24 @@ def detect_wave2(candles: list[dict], cfg: dict) -> dict:
         res.update(stage="no_room", detail="too close to the ATH")
         return res
 
+    # Stop "closely underneath": below the breakout candles and the line. If that is more than
+    # max_risk away, the structure is wrong for this method, so skip rather than widen the stop.
+    stop_level = min(lows[B], lows[L], math.exp(line(L))) * (1 - cfg["support_buffer"])
+    entry_fill = closes[L] * (1 + cfg["entry_slippage"])
+    risk = 1 - stop_level / entry_fill
+    m["stop_level"] = stop_level
+    m["risk"] = risk
+    if risk > cfg["max_risk"]:
+        res.update(stage="stop_too_far", detail=f"confirmed breakout, but the stop would be {risk:.0%} away (max {cfg['max_risk']:.0%})")
+        return res
+
     r = rsi(closes)
     pull_rsi = [v for v in r[a:L] if v is not None]
     m["rsi_min"] = min(pull_rsi) if pull_rsi else None
     m["oversold"] = bool(pull_rsi) and min(pull_rsi) <= cfg["rsi_oversold"]
     res.update(stage="signal", signal=True,
-               detail=(f"broke a {touches}-touch downtrend line on {m['volume_ratio']:.1f}x volume, "
-                       f"{depth:.0%} pullback, support tested {tests}x"
+               detail=(f"confirmed break of a {touches}-touch downtrend line on {m['volume_ratio']:.1f}x volume, "
+                       f"{depth:.0%} pullback, support tested {tests}x, stop {risk:.0%} below"
                        + (", RSI was oversold" if m["oversold"] else "")))
     return res
 
@@ -584,7 +603,7 @@ def open_trade(coin: dict, det: dict, cfg: dict, now: float) -> dict:
     m = det["metrics"]
     ref = m["last"]
     fill = ref * (1 + cfg["entry_slippage"])
-    stop = m["support"] * (1 - cfg["support_buffer"])
+    stop = m.get("stop_level") or m["support"] * (1 - cfg["support_buffer"])
     risk = 1 - stop / fill
     if risk > cfg["max_risk"]:
         stop = fill * (1 - cfg["max_risk"])
@@ -628,13 +647,27 @@ def process_candle(tr: dict, c: dict, cfg: dict):
     if tr["status"] != "open" or c["t"] + 60 <= tr["last_check"]:
         return
     moon = 1 - sum(t["frac"] for t in tr["targets"])
-    stop_kind = "trailing stop" if tr["tp1_done"] else "stop loss"
-    if c["o"] <= tr["stop"]:
-        _sell(tr, tr["remaining"], c["o"] * (1 - cfg["stop_slippage"]), c["t"], stop_kind + " (gap)", cfg)
-        return
-    if c["l"] <= tr["stop"]:
-        _sell(tr, tr["remaining"], tr["stop"] * (1 - cfg["stop_slippage"]), c["t"], stop_kind, cfg)
-        return
+    if tr["tp1_done"]:
+        # in profit: trailing/breakeven stop behaves like a real stop order (fires on the wick)
+        if c["o"] <= tr["stop"]:
+            _sell(tr, tr["remaining"], c["o"] * (1 - cfg["stop_slippage"]), c["t"], "trailing stop (gap)", cfg)
+            return
+        if c["l"] <= tr["stop"]:
+            _sell(tr, tr["remaining"], tr["stop"] * (1 - cfg["stop_slippage"]), c["t"], "trailing stop", cfg)
+            return
+    else:
+        # Sajad reads 5-minute charts: a brief wick under the stop doesn't count, a 5m close does.
+        # Only a real crash (emergency level) exits mid-candle.
+        emergency = tr["entry_fill"] * (1 - cfg["emergency_stop"])
+        if c["o"] <= emergency:
+            _sell(tr, tr["remaining"], c["o"] * (1 - cfg["stop_slippage"]), c["t"], "emergency stop (gap)", cfg)
+            return
+        if c["l"] <= emergency:
+            _sell(tr, tr["remaining"], emergency * (1 - cfg["stop_slippage"]), c["t"], "emergency stop", cfg)
+            return
+        if c["t"] % 300 == 240 and c["c"] <= tr["stop"]:      # last minute of a 5m candle = its close
+            _sell(tr, tr["remaining"], c["c"] * (1 - cfg["stop_slippage"]), c["t"], "stop loss (5-min close)", cfg)
+            return
     for t in tr["targets"]:
         if not t["hit"] and c["h"] >= t["price"] and tr["remaining"] - moon > 1e-9:
             t["hit"] = True
@@ -795,6 +828,16 @@ class Engine:
                 base.update(json.loads(STATE_PATH.read_text()))
             except Exception as e:
                 log_event("state_load_error", error=str(e))
+        if base.get("rules_version") != RULES_VERSION:
+            if base["trades"] or base["alerts"]:
+                OUT_DIR.mkdir(parents=True, exist_ok=True)
+                archive = OUT_DIR / f"sajad_state_rules_v{base.get('rules_version', 1)}.json"
+                archive.write_text(json.dumps(base, default=str))
+                log_event("results_archived", file=str(archive), trades=len(base["trades"]))
+            base.update(started_at=time.time(), trades=[], alerts=[], coin_losses={})
+            for w in base["watch"].values():
+                w["last_eval"] = 0
+            base["rules_version"] = RULES_VERSION
         return base
 
     def save(self):
@@ -1048,8 +1091,9 @@ class Engine:
             cfg = self.cfg
             sol_usd = self.state.get("sol_usd") or cfg["sol_usd_fallback"]
             trades = self.state["trades"]
-            order = ["signal", "below_line", "weak_volume", "line_weak", "basing", "no_line", "falling",
-                     "shallow", "wave1", "extended", "already_broke", "no_room", "too_new", "new", "dead"]
+            order = ["signal", "breaking_out", "below_line", "weak_volume", "line_weak", "basing", "no_line",
+                     "falling", "shallow", "wave1", "fakeout", "stop_too_far", "extended", "already_broke",
+                     "no_room", "too_new", "new", "dev_reject", "dead"]
             watch = sorted(self.state["watch"].values(),
                            key=lambda w: (order.index(w["stage"]) if w.get("stage") in order else 99, -w["volume_1h"]))
             return dict(

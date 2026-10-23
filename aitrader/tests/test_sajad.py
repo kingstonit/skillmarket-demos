@@ -9,7 +9,7 @@ import sajad  # noqa: E402
 CFG = sajad.DEFAULT_CFG
 
 
-def wave2_chart(breakout=True, volume_mult=5.0, last_close_mult=1.05):
+def wave2_chart(breakout=True, volume_mult=5.0, last_close_mult=1.05, confirm=True):
     """60 x 5m candles: pump to ATH 10, pull back to a base at 2.0 (tested twice),
     lower highs on a downtrend line from the ATH, then (optionally) a breakout on volume."""
     a, s = 10, (math.log(3.0) - math.log(10.0)) / 40
@@ -34,14 +34,19 @@ def wave2_chart(breakout=True, volume_mult=5.0, last_close_mult=1.05):
         cs.append(c)
     L = len(cs) - 1
     if breakout:
-        close = line(L) * last_close_mult
-        cs[L].update(o=line(L) * 0.9, h=close * 1.01, l=line(L) * 0.88, c=close, v=1000 * volume_mult)
+        B = L - 1 if confirm else L                   # breakout candle, then (optionally) a confirming close
+        close = line(B) * last_close_mult
+        cs[B].update(o=line(B) * 0.95, h=close * 1.01, l=line(B) * 0.93, c=close, v=1000 * volume_mult)
+        if confirm:
+            c2 = line(L) * last_close_mult * 1.02
+            cs[L].update(o=close, h=c2 * 1.01, l=line(L) * 0.97, c=c2, v=1000 * volume_mult * 0.8)
     return cs
 
 
 def test_signal_on_clean_wave2():
     det = sajad.detect_wave2(wave2_chart(), CFG)
     assert det["signal"], det
+    assert 0.0 < det["metrics"]["risk"] <= CFG["max_risk"]
     assert det["metrics"]["touches"] >= 3
     assert det["metrics"]["support_tests"] >= 2
     assert 0.75 < det["metrics"]["pullback"] < 0.85
@@ -90,10 +95,10 @@ def candle(t, o, h, l, c, v=1000):
 def test_stop_loss_limits_loss():
     tr = _trade()
     assert 0.10 <= 1 - tr["stop"] / tr["entry_fill"] <= 0.20
-    sajad.update_trade(tr, [candle(0, 1, 1.02, 0.7, 0.75)], now=600, cfg=CFG)
+    sajad.update_trade(tr, [candle(0, 1, 1.02, 0.6, 0.65)], now=600, cfg=CFG)
     v = sajad.trade_view(tr, CFG)
-    assert tr["status"] == "closed" and tr["exit_reason"].startswith("stop loss")
-    assert -0.30 < v["pnl_pct"] < -0.15
+    assert tr["status"] == "closed" and tr["exit_reason"].startswith("emergency stop")
+    assert -0.40 < v["pnl_pct"] < -0.25
 
 
 def test_take_profit_moonbag_and_trailing():
@@ -203,3 +208,38 @@ def test_dev_gate_blocks_signal(monkeypatch):
     e.evaluate("A1", 2000)
     assert not e.state["trades"]
     assert e.state["watch"]["A1"]["stage"] == "dev_reject"
+
+
+def test_unconfirmed_breakout_waits():
+    assert sajad.detect_wave2(wave2_chart(confirm=False), CFG)["stage"] == "breaking_out"
+
+
+def test_fakeout_is_rejected():
+    cs = wave2_chart()
+    a, sl = 10, (math.log(3.0) - math.log(10.0)) / 40
+    L = len(cs) - 1
+    line_L = math.exp(math.log(10.0) + sl * (L - a))
+    cs[L].update(c=line_L * 0.9, l=line_L * 0.85)    # second candle falls back under the line
+    assert sajad.detect_wave2(cs, CFG)["stage"] == "fakeout"
+
+
+def test_stop_too_far_is_skipped():
+    cs = wave2_chart()
+    cs[-2]["l"] = 2.2                                # deep wick (still above the 2.0 base): stop would be >20% away
+    assert sajad.detect_wave2(cs, CFG)["stage"] == "stop_too_far"
+
+
+def test_wick_below_stop_does_not_stop_out():
+    tr = _trade()
+    stop = tr["stop"]
+    # minute 1 of a 5m candle wicks under the stop but closes back above; 5m close (t%300==240) is fine
+    seq = [candle(300, 1.0, 1.0, stop * 0.95, 0.99), candle(540, 0.99, 1.0, 0.98, 0.99)]
+    sajad.update_trade(tr, seq, now=900, cfg=CFG)
+    assert tr["status"] == "open"
+
+
+def test_five_minute_close_below_stop_exits():
+    tr = _trade()
+    stop = tr["stop"]
+    sajad.update_trade(tr, [candle(540, stop * 1.01, stop * 1.02, stop * 0.97, stop * 0.98)], now=900, cfg=CFG)
+    assert tr["status"] == "closed" and tr["exit_reason"] == "stop loss (5-min close)"

@@ -2064,7 +2064,7 @@ const w2ago=ts=>{if(!ts)return"–";const s=Date.now()/1000-ts;return s<90?`${Ma
 const w2hrs=h=>h==null?"–":h<1?`${Math.round(h*60)}m`:h<48?`${h.toFixed(1)}h`:`${(h/24).toFixed(1)}d`;
 const w2time=ts=>new Date(ts*1000).toLocaleString([], {month:"short",day:"numeric",hour:"2-digit",minute:"2-digit"});
 const w2gmgn=a=>`https://gmgn.ai/sol/token/${encodeURIComponent(a)}`;
-const W2_NEAR=["below_line","weak_volume","line_weak"], W2_BAD=["dead","dev_reject","falling"];
+const W2_NEAR=["breaking_out","below_line","weak_volume","line_weak"], W2_BAD=["dead","dev_reject","falling","fakeout"];
 
 async function w2Refresh(){
   if(document.hidden&&w2Data)return;
