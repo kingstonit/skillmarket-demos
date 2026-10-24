@@ -14,3 +14,5 @@ Rules of the road:
 - Every GMGN call, from both tabs, goes through one `RateLimiter` (`sajad.gate` in `LiveGMGN`). The free plan bucket is 5 weight; a 429 pauses all calls until the reset time. Never retry during a ban.
 - Data comes from `gmgn-cli` 1.5.2 (`market trending`, `market kline`). Check the CLI source before changing any command or field name.
 - Runtime state lives in `outputs/` (`sajad_state.json`, `sajad_events.jsonl`), not in git.
+
+- RULES FROZEN from 2026-10-24 (breakeven-on-runners was the last change). Do not tune entry/exit rules again until 20+ closed paper trades; Wil's call: no editing just to make results look better.

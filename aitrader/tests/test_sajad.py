@@ -243,3 +243,14 @@ def test_five_minute_close_below_stop_exits():
     stop = tr["stop"]
     sajad.update_trade(tr, [candle(540, stop * 1.01, stop * 1.02, stop * 0.97, stop * 0.98)], now=900, cfg=CFG)
     assert tr["status"] == "closed" and tr["exit_reason"] == "stop loss (5-min close)"
+
+
+def test_runner_moves_stop_to_breakeven():
+    tr = _trade()
+    e = tr["entry_fill"]
+    seq = [candle(60, 1.0, e * 1.56, 0.99, e * 1.5),          # runs +56% (like NIO)
+           candle(120, e * 1.5, e * 1.5, e * 0.7, e * 0.75)]   # then collapses
+    sajad.update_trade(tr, seq, now=1000, cfg=CFG)
+    v = sajad.trade_view(tr, CFG)
+    assert tr["status"] == "closed" and tr["exit_reason"] == "breakeven stop"
+    assert v["pnl_pct"] > -0.10                                # costs only, not a -24% loss

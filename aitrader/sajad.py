@@ -107,6 +107,7 @@ DEFAULT_CFG: dict[str, Any] = {
     "fee_pct": 0.01,                   # per side
     "min_risk": 0.10, "max_risk": 0.20,  # stop 10-20% below entry; skip the trade if it would need more
     "emergency_stop": 0.30,            # mid-candle crash exit; normal stops wait for a 5m close
+    "breakeven_at": 0.30,              # "once it's running, move your stop up so you can't lose"
     "support_buffer": 0.03,
     "tp1_mult": 2.0, "tp1_min_mult": 1.5, "tp1_frac": 0.50,
     "ladder_frac": 0.10, "ladder_count": 3,
@@ -653,13 +654,14 @@ def process_candle(tr: dict, c: dict, cfg: dict):
     if tr["status"] != "open" or c["t"] + 60 <= tr["last_check"]:
         return
     moon = 1 - sum(t["frac"] for t in tr["targets"])
-    if tr["tp1_done"]:
+    if tr["tp1_done"] or tr.get("be_armed"):
         # in profit: trailing/breakeven stop behaves like a real stop order (fires on the wick)
+        kind = "trailing stop" if tr["tp1_done"] else "breakeven stop"
         if c["o"] <= tr["stop"]:
-            _sell(tr, tr["remaining"], c["o"] * (1 - cfg["stop_slippage"]), c["t"], "trailing stop (gap)", cfg)
+            _sell(tr, tr["remaining"], c["o"] * (1 - cfg["stop_slippage"]), c["t"], kind + " (gap)", cfg)
             return
         if c["l"] <= tr["stop"]:
-            _sell(tr, tr["remaining"], tr["stop"] * (1 - cfg["stop_slippage"]), c["t"], "trailing stop", cfg)
+            _sell(tr, tr["remaining"], tr["stop"] * (1 - cfg["stop_slippage"]), c["t"], kind, cfg)
             return
     else:
         # Sajad reads 5-minute charts: a brief wick under the stop doesn't count, a 5m close does.
@@ -683,6 +685,9 @@ def process_candle(tr: dict, c: dict, cfg: dict):
                 tr["tp1_done"] = True
                 tr["stop"] = max(tr["stop"], tr["entry_fill"])           # breakeven
     tr["peak"] = max(tr["peak"], c["h"])
+    if not tr["tp1_done"] and not tr.get("be_armed") and tr["peak"] >= tr["entry_fill"] * (1 + cfg["breakeven_at"]):
+        tr["be_armed"] = True                                       # Sajad: a runner must not become a loser
+        tr["stop"] = max(tr["stop"], tr["entry_fill"])
     if tr["tp1_done"]:
         only_moon = all(t["hit"] for t in tr["targets"])
         trail = cfg["moonbag_trail_pct"] if only_moon else cfg["trail_pct"]
